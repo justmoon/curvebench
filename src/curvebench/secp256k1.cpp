@@ -3,7 +3,7 @@
 
 #define TEST_MESSAGE ((unsigned char *) "This is a test message.")
 
-class Secp255k1Fixture
+class Secp256k1Fixture
     :   public ::hayai::Fixture
 {
 public:
@@ -31,7 +31,7 @@ public:
     int siglen;
 };
 
-BENCHMARK_F(Secp255k1Fixture, Verify, 10, 100)
+BENCHMARK_F(Secp256k1Fixture, Verify, 10, 100)
 {
     secp256k1_ecdsa_verify(TEST_MESSAGE, sizeof(TEST_MESSAGE)-1,
                            sig, siglen,
