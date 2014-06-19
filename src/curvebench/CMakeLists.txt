@@ -1,27 +1,34 @@
 include_directories(
   ${PROJECT_SOURCE_DIR}/src/hayai/src
-  ${PROJECT_SOURCE_DIR}/src/ed25519/src
+#  ${PROJECT_SOURCE_DIR}/src/ed25519/src
+  ${PROJECT_SOURCE_DIR}/src/ed25519-donna
   ${PROJECT_SOURCE_DIR}/src/secp256k1/include
 )
 
+set(CMAKE_CXX_FLAGS "-std=c++11 -m64 -O3")
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR})
 
 add_executable(benchmark
   secp256k1.cpp
 
-  ed25519.cpp
-  ${PROJECT_SOURCE_DIR}/src/ed25519/src/fe.c
-  ${PROJECT_SOURCE_DIR}/src/ed25519/src/ge.c
-  ${PROJECT_SOURCE_DIR}/src/ed25519/src/sc.c
-  ${PROJECT_SOURCE_DIR}/src/ed25519/src/seed.c
-  ${PROJECT_SOURCE_DIR}/src/ed25519/src/keypair.c
-  ${PROJECT_SOURCE_DIR}/src/ed25519/src/sha512.c
-  ${PROJECT_SOURCE_DIR}/src/ed25519/src/sign.c
-  ${PROJECT_SOURCE_DIR}/src/ed25519/src/verify.c
+#  ed25519.cpp
+#  ${PROJECT_SOURCE_DIR}/src/ed25519/src/fe.c
+#  ${PROJECT_SOURCE_DIR}/src/ed25519/src/ge.c
+#  ${PROJECT_SOURCE_DIR}/src/ed25519/src/sc.c
+#  ${PROJECT_SOURCE_DIR}/src/ed25519/src/seed.c
+#  ${PROJECT_SOURCE_DIR}/src/ed25519/src/keypair.c
+#  ${PROJECT_SOURCE_DIR}/src/ed25519/src/sha512.c
+#  ${PROJECT_SOURCE_DIR}/src/ed25519/src/sign.c
+#  ${PROJECT_SOURCE_DIR}/src/ed25519/src/verify.c
+
+  ed25519-donna.cpp
+  ${PROJECT_SOURCE_DIR}/src/ed25519-donna/ed25519.c
 )
 
 target_link_libraries(benchmark
   hayai_main
   ${PROJECT_SOURCE_DIR}/src/secp256k1/.libs/libsecp256k1.a
   gmp
+  ssl
+  crypto
 )
