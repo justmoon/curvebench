@@ -1,7 +1,7 @@
 #include <hayai.hpp>
 #include <ed25519.h>
 
-#define TEST_MESSAGE "This is a test message."
+#define TEST_MESSAGE ((unsigned char *) "This is a test message.")
 
 class Ed25519Fixture
     :   public ::hayai::Fixture
@@ -11,7 +11,7 @@ public:
     {
         ed25519_create_seed(seed);
         ed25519_create_keypair(pubkey, privkey, seed);
-        ed25519_sign(sig, (unsigned char *)TEST_MESSAGE, sizeof(TEST_MESSAGE)-1,
+        ed25519_sign(sig, TEST_MESSAGE, sizeof(TEST_MESSAGE)-1,
                      pubkey, privkey);
     }
  
@@ -27,7 +27,7 @@ public:
 
 BENCHMARK_F(Ed25519Fixture, Verify, 10, 100)
 {
-    ed25519_verify(sig, (unsigned char *)TEST_MESSAGE, sizeof(TEST_MESSAGE)-1,
+    ed25519_verify(sig, TEST_MESSAGE, sizeof(TEST_MESSAGE)-1,
                    pubkey);
 }
 

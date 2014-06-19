@@ -1,6 +1,7 @@
 include_directories(
   ${PROJECT_SOURCE_DIR}/src/hayai/src
   ${PROJECT_SOURCE_DIR}/src/ed25519/src
+  ${PROJECT_SOURCE_DIR}/src/secp256k1/include
 )
 
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR})
@@ -21,4 +22,6 @@ add_executable(benchmark
 
 target_link_libraries(benchmark
   hayai_main
+  ${PROJECT_SOURCE_DIR}/src/secp256k1/.libs/libsecp256k1.a
+  gmp
 )
