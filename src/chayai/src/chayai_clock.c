@@ -99,6 +99,10 @@ int64_t chayai_clock_duration(CHayaiTimePoint startTime, CHayaiTimePoint endTime
 // gettimeofday
 #   else
 
+#ifndef NULL
+#define NULL 0
+#endif
+
 CHayaiTimePoint chayai_clock_now()
 {
     CHayaiTimePoint result;
