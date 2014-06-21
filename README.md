@@ -14,3 +14,6 @@ make
 # Run benchmark
 ./benchmark
 ```
+# Results
+
+See [benchmark.html](http://justmoon.github.io/curvebench/benchmark.html)
