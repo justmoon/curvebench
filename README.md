@@ -4,19 +4,13 @@ A quick comparison benchmark between Ed25519 (implementation by DJB et al) and s
 
 # Instructions
 
-``` sh
-# Build secp256k1
-cd src/secp256k1
-aclocal
-autoreconf --install
-automake
-./configure
-make
-cd ../..
+You need G++, CMake 2.6, OpenSSL and YASM.
 
-# Build rest
+``` sh
+# Build
 cmake .
 make
 
 # Run benchmark
 ./benchmark
+```

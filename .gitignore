@@ -8,5 +8,8 @@ install_manifest.txt
 # .o files
 *.o
 
+# HTML report
+/benchmark.html
+
 # Executable
 benchmark
