@@ -4,18 +4,16 @@
  * file COPYING or http://www.opensource.org/licenses/mit-license.php.*
  **********************************************************************/
 
-#ifndef _SECP256K1_FIELD_REPR_
-#define _SECP256K1_FIELD_REPR_
+#ifndef _SECP256K1_ECMULT_GEN_
+#define _SECP256K1_ECMULT_GEN_
 
-#include <stdint.h>
+#include "scalar.h"
+#include "group.h"
 
-typedef struct {
-    /* X = sum(i=0..9, elem[i]*2^26) mod n */
-    uint32_t n[10];
-#ifdef VERIFY
-    int magnitude;
-    int normalized;
-#endif
-} secp256k1_fe_t;
+static void secp256k1_ecmult_gen_start(void);
+static void secp256k1_ecmult_gen_stop(void);
+
+/** Multiply with the generator: R = a*G */
+static void secp256k1_ecmult_gen(secp256k1_gej_t *r, const secp256k1_scalar_t *a);
 
 #endif

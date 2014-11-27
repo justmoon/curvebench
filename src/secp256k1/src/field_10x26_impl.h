@@ -1,133 +1,158 @@
-// Copyright (c) 2013 Pieter Wuille
-// Distributed under the MIT/X11 software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+/**********************************************************************
+ * Copyright (c) 2013, 2014 Pieter Wuille                             *
+ * Distributed under the MIT software license, see the accompanying   *
+ * file COPYING or http://www.opensource.org/licenses/mit-license.php.*
+ **********************************************************************/
 
 #ifndef _SECP256K1_FIELD_REPR_IMPL_H_
 #define _SECP256K1_FIELD_REPR_IMPL_H_
 
 #include <stdio.h>
-#include <assert.h>
 #include <string.h>
+#include "util.h"
 #include "num.h"
 #include "field.h"
 
-void static secp256k1_fe_inner_start(void) {}
-void static secp256k1_fe_inner_stop(void) {}
+static void secp256k1_fe_inner_start(void) {}
+static void secp256k1_fe_inner_stop(void) {}
 
-void static secp256k1_fe_normalize(secp256k1_fe_t *r) {
-//    fog("normalize in: ", r);
-    uint32_t c;
-    c = r->n[0];
-    uint32_t t0 = c & 0x3FFFFFFUL;
-    c = (c >> 26) + r->n[1];
-    uint32_t t1 = c & 0x3FFFFFFUL;
-    c = (c >> 26) + r->n[2];
-    uint32_t t2 = c & 0x3FFFFFFUL;
-    c = (c >> 26) + r->n[3];
-    uint32_t t3 = c & 0x3FFFFFFUL;
-    c = (c >> 26) + r->n[4];
-    uint32_t t4 = c & 0x3FFFFFFUL;
-    c = (c >> 26) + r->n[5];
-    uint32_t t5 = c & 0x3FFFFFFUL;
-    c = (c >> 26) + r->n[6];
-    uint32_t t6 = c & 0x3FFFFFFUL;
-    c = (c >> 26) + r->n[7];
-    uint32_t t7 = c & 0x3FFFFFFUL;
-    c = (c >> 26) + r->n[8];
-    uint32_t t8 = c & 0x3FFFFFFUL;
-    c = (c >> 26) + r->n[9];
-    uint32_t t9 = c & 0x03FFFFFUL;
-    c >>= 22;
-/*    r->n[0] = t0; r->n[1] = t1; r->n[2] = t2; r->n[3] = t3; r->n[4] = t4;
+#ifdef VERIFY
+static void secp256k1_fe_verify(const secp256k1_fe_t *a) {
+    const uint32_t *d = a->n;
+    int m = a->normalized ? 1 : 2 * a->magnitude, r = 1;
+    r &= (d[0] <= 0x3FFFFFFUL * m);
+    r &= (d[1] <= 0x3FFFFFFUL * m);
+    r &= (d[2] <= 0x3FFFFFFUL * m);
+    r &= (d[3] <= 0x3FFFFFFUL * m);
+    r &= (d[4] <= 0x3FFFFFFUL * m);
+    r &= (d[5] <= 0x3FFFFFFUL * m);
+    r &= (d[6] <= 0x3FFFFFFUL * m);
+    r &= (d[7] <= 0x3FFFFFFUL * m);
+    r &= (d[8] <= 0x3FFFFFFUL * m);
+    r &= (d[9] <= 0x03FFFFFUL * m);
+    r &= (a->magnitude >= 0);
+    if (a->normalized) {
+        r &= (a->magnitude <= 1);
+        if (r && (d[9] == 0x03FFFFFUL)) {
+            uint32_t mid = d[8] & d[7] & d[6] & d[5] & d[4] & d[3] & d[2];
+            if (mid == 0x3FFFFFFUL) {
+                r &= ((d[1] + 0x40UL + ((d[0] + 0x3D1UL) >> 26)) <= 0x3FFFFFFUL);
+            }
+        }
+    }
+    VERIFY_CHECK(r == 1);
+}
+#else
+static void secp256k1_fe_verify(const secp256k1_fe_t *a) {
+    (void)a;
+}
+#endif
+
+static void secp256k1_fe_normalize(secp256k1_fe_t *r) {
+    uint32_t t0 = r->n[0], t1 = r->n[1], t2 = r->n[2], t3 = r->n[3], t4 = r->n[4],
+             t5 = r->n[5], t6 = r->n[6], t7 = r->n[7], t8 = r->n[8], t9 = r->n[9];
+
+    /* Reduce t9 at the start so there will be at most a single carry from the first pass */
+    uint32_t x = t9 >> 22; t9 &= 0x03FFFFFUL;
+    uint32_t m;
+
+    /* The first pass ensures the magnitude is 1, ... */
+    t0 += x * 0x3D1UL; t1 += (x << 6);
+    t1 += (t0 >> 26); t0 &= 0x3FFFFFFUL;
+    t2 += (t1 >> 26); t1 &= 0x3FFFFFFUL;
+    t3 += (t2 >> 26); t2 &= 0x3FFFFFFUL; m = t2;
+    t4 += (t3 >> 26); t3 &= 0x3FFFFFFUL; m &= t3;
+    t5 += (t4 >> 26); t4 &= 0x3FFFFFFUL; m &= t4;
+    t6 += (t5 >> 26); t5 &= 0x3FFFFFFUL; m &= t5;
+    t7 += (t6 >> 26); t6 &= 0x3FFFFFFUL; m &= t6;
+    t8 += (t7 >> 26); t7 &= 0x3FFFFFFUL; m &= t7;
+    t9 += (t8 >> 26); t8 &= 0x3FFFFFFUL; m &= t8;
+
+    /* ... except for a possible carry at bit 22 of t9 (i.e. bit 256 of the field element) */
+    VERIFY_CHECK(t9 >> 23 == 0);
+
+    /* At most a single final reduction is needed; check if the value is >= the field characteristic */
+    x = (t9 >> 22) | ((t9 == 0x03FFFFFUL) & (m == 0x3FFFFFFUL)
+        & ((t1 + 0x40UL + ((t0 + 0x3D1UL) >> 26)) > 0x3FFFFFFUL));
+
+    /* Apply the final reduction (for constant-time behaviour, we do it always) */
+    t0 += x * 0x3D1UL; t1 += (x << 6);
+    t1 += (t0 >> 26); t0 &= 0x3FFFFFFUL;
+    t2 += (t1 >> 26); t1 &= 0x3FFFFFFUL;
+    t3 += (t2 >> 26); t2 &= 0x3FFFFFFUL;
+    t4 += (t3 >> 26); t3 &= 0x3FFFFFFUL;
+    t5 += (t4 >> 26); t4 &= 0x3FFFFFFUL;
+    t6 += (t5 >> 26); t5 &= 0x3FFFFFFUL;
+    t7 += (t6 >> 26); t6 &= 0x3FFFFFFUL;
+    t8 += (t7 >> 26); t7 &= 0x3FFFFFFUL;
+    t9 += (t8 >> 26); t8 &= 0x3FFFFFFUL;
+
+    /* If t9 didn't carry to bit 22 already, then it should have after any final reduction */
+    VERIFY_CHECK(t9 >> 22 == x);
+
+    /* Mask off the possible multiple of 2^256 from the final reduction */
+    t9 &= 0x03FFFFFUL;
+
+    r->n[0] = t0; r->n[1] = t1; r->n[2] = t2; r->n[3] = t3; r->n[4] = t4;
     r->n[5] = t5; r->n[6] = t6; r->n[7] = t7; r->n[8] = t8; r->n[9] = t9;
-    fog("         tm1: ", r);
-    fprintf(stderr, "out c= %08lx\n", (unsigned long)c);*/
-
-    // The following code will not modify the t's if c is initially 0.
-    uint32_t d = c * 0x3D1UL + t0;
-    t0 = d & 0x3FFFFFFULL;
-    d = (d >> 26) + t1 + c*0x40;
-    t1 = d & 0x3FFFFFFULL;
-    d = (d >> 26) + t2;
-    t2 = d & 0x3FFFFFFULL;
-    d = (d >> 26) + t3;
-    t3 = d & 0x3FFFFFFULL;
-    d = (d >> 26) + t4;
-    t4 = d & 0x3FFFFFFULL;
-    d = (d >> 26) + t5;
-    t5 = d & 0x3FFFFFFULL;
-    d = (d >> 26) + t6;
-    t6 = d & 0x3FFFFFFULL;
-    d = (d >> 26) + t7;
-    t7 = d & 0x3FFFFFFULL;
-    d = (d >> 26) + t8;
-    t8 = d & 0x3FFFFFFULL;
-    d = (d >> 26) + t9;
-    t9 = d & 0x03FFFFFULL;
-    assert((d >> 22) == 0);
-/*    r->n[0] = t0; r->n[1] = t1; r->n[2] = t2; r->n[3] = t3; r->n[4] = t4;
-    r->n[5] = t5; r->n[6] = t6; r->n[7] = t7; r->n[8] = t8; r->n[9] = t9;
-    fog("         tm2: ", r); */
-
-    // Subtract p if result >= p
-    uint64_t low = ((uint64_t)t1 << 26) | t0;
-    uint64_t mask = -(int64_t)((t9 < 0x03FFFFFUL) | (t8 < 0x3FFFFFFUL) | (t7 < 0x3FFFFFFUL) | (t6 < 0x3FFFFFFUL) | (t5 < 0x3FFFFFFUL) | (t4 < 0x3FFFFFFUL) | (t3 < 0x3FFFFFFUL) | (t2 < 0x3FFFFFFUL) | (low < 0xFFFFEFFFFFC2FULL));
-    t9 &= mask;
-    t8 &= mask;
-    t7 &= mask;
-    t6 &= mask;
-    t5 &= mask;
-    t4 &= mask;
-    t3 &= mask;
-    t2 &= mask;
-    low -= (~mask & 0xFFFFEFFFFFC2FULL);
-
-    // push internal variables back
-    r->n[0] = low & 0x3FFFFFFUL; r->n[1] = (low >> 26) & 0x3FFFFFFUL; r->n[2] = t2; r->n[3] = t3; r->n[4] = t4;
-    r->n[5] = t5; r->n[6] = t6; r->n[7] = t7; r->n[8] = t8; r->n[9] = t9;
-/*    fog("         out: ", r);*/
 
 #ifdef VERIFY
     r->magnitude = 1;
     r->normalized = 1;
+    secp256k1_fe_verify(r);
 #endif
 }
 
-void static inline secp256k1_fe_set_int(secp256k1_fe_t *r, int a) {
+SECP256K1_INLINE static void secp256k1_fe_set_int(secp256k1_fe_t *r, int a) {
     r->n[0] = a;
     r->n[1] = r->n[2] = r->n[3] = r->n[4] = r->n[5] = r->n[6] = r->n[7] = r->n[8] = r->n[9] = 0;
 #ifdef VERIFY
     r->magnitude = 1;
     r->normalized = 1;
+    secp256k1_fe_verify(r);
 #endif
 }
 
-// TODO: not constant time!
-int static inline secp256k1_fe_is_zero(const secp256k1_fe_t *a) {
+SECP256K1_INLINE static int secp256k1_fe_is_zero(const secp256k1_fe_t *a) {
 #ifdef VERIFY
-    assert(a->normalized);
+    VERIFY_CHECK(a->normalized);
+    secp256k1_fe_verify(a);
 #endif
-    return (a->n[0] == 0 && a->n[1] == 0 && a->n[2] == 0 && a->n[3] == 0 && a->n[4] == 0 && a->n[5] == 0 && a->n[6] == 0 && a->n[7] == 0 && a->n[8] == 0 && a->n[9] == 0);
+    const uint32_t *t = a->n;
+    return (t[0] | t[1] | t[2] | t[3] | t[4] | t[5] | t[6] | t[7] | t[8] | t[9]) == 0;
 }
 
-int static inline secp256k1_fe_is_odd(const secp256k1_fe_t *a) {
+SECP256K1_INLINE static int secp256k1_fe_is_odd(const secp256k1_fe_t *a) {
 #ifdef VERIFY
-    assert(a->normalized);
+    VERIFY_CHECK(a->normalized);
+    secp256k1_fe_verify(a);
 #endif
     return a->n[0] & 1;
 }
 
-// TODO: not constant time!
-int static inline secp256k1_fe_equal(const secp256k1_fe_t *a, const secp256k1_fe_t *b) {
+SECP256K1_INLINE static void secp256k1_fe_clear(secp256k1_fe_t *a) {
 #ifdef VERIFY
-    assert(a->normalized);
-    assert(b->normalized);
+    a->magnitude = 0;
+    a->normalized = 1;
 #endif
-    return (a->n[0] == b->n[0] && a->n[1] == b->n[1] && a->n[2] == b->n[2] && a->n[3] == b->n[3] && a->n[4] == b->n[4] &&
-            a->n[5] == b->n[5] && a->n[6] == b->n[6] && a->n[7] == b->n[7] && a->n[8] == b->n[8] && a->n[9] == b->n[9]);
+    for (int i=0; i<10; i++) {
+        a->n[i] = 0;
+    }
 }
 
-void static secp256k1_fe_set_b32(secp256k1_fe_t *r, const unsigned char *a) {
+SECP256K1_INLINE static int secp256k1_fe_equal(const secp256k1_fe_t *a, const secp256k1_fe_t *b) {
+#ifdef VERIFY
+    VERIFY_CHECK(a->normalized);
+    VERIFY_CHECK(b->normalized);
+    secp256k1_fe_verify(a);
+    secp256k1_fe_verify(b);
+#endif
+    const uint32_t *t = a->n, *u = b->n;
+    return ((t[0]^u[0]) | (t[1]^u[1]) | (t[2]^u[2]) | (t[3]^u[3]) | (t[4]^u[4])
+          | (t[5]^u[5]) | (t[6]^u[6]) | (t[7]^u[7]) | (t[8]^u[8]) | (t[9]^u[9])) == 0;
+}
+
+static int secp256k1_fe_set_b32(secp256k1_fe_t *r, const unsigned char *a) {
     r->n[0] = r->n[1] = r->n[2] = r->n[3] = r->n[4] = 0;
     r->n[5] = r->n[6] = r->n[7] = r->n[8] = r->n[9] = 0;
     for (int i=0; i<32; i++) {
@@ -137,16 +162,22 @@ void static secp256k1_fe_set_b32(secp256k1_fe_t *r, const unsigned char *a) {
             r->n[limb] |= (uint32_t)((a[31-i] >> (2*j)) & 0x3) << shift;
         }
     }
+    if (r->n[9] == 0x3FFFFFUL && (r->n[8] & r->n[7] & r->n[6] & r->n[5] & r->n[4] & r->n[3] & r->n[2]) == 0x3FFFFFFUL && (r->n[1] + 0x40UL + ((r->n[0] + 0x3D1UL) >> 26)) > 0x3FFFFFFUL) {
+        return 0;
+    }
 #ifdef VERIFY
     r->magnitude = 1;
     r->normalized = 1;
+    secp256k1_fe_verify(r);
 #endif
+    return 1;
 }
 
 /** Convert a field element to a 32-byte big endian value. Requires the input to be normalized */
-void static secp256k1_fe_get_b32(unsigned char *r, const secp256k1_fe_t *a) {
+static void secp256k1_fe_get_b32(unsigned char *r, const secp256k1_fe_t *a) {
 #ifdef VERIFY
-    assert(a->normalized);
+    VERIFY_CHECK(a->normalized);
+    secp256k1_fe_verify(a);
 #endif
     for (int i=0; i<32; i++) {
         int c = 0;
@@ -159,29 +190,29 @@ void static secp256k1_fe_get_b32(unsigned char *r, const secp256k1_fe_t *a) {
     }
 }
 
-void static inline secp256k1_fe_negate(secp256k1_fe_t *r, const secp256k1_fe_t *a, int m) {
+SECP256K1_INLINE static void secp256k1_fe_negate(secp256k1_fe_t *r, const secp256k1_fe_t *a, int m) {
 #ifdef VERIFY
-    assert(a->magnitude <= m);
+    VERIFY_CHECK(a->magnitude <= m);
+    secp256k1_fe_verify(a);
+#endif
+    r->n[0] = 0x3FFFC2FUL * 2 * (m + 1) - a->n[0];
+    r->n[1] = 0x3FFFFBFUL * 2 * (m + 1) - a->n[1];
+    r->n[2] = 0x3FFFFFFUL * 2 * (m + 1) - a->n[2];
+    r->n[3] = 0x3FFFFFFUL * 2 * (m + 1) - a->n[3];
+    r->n[4] = 0x3FFFFFFUL * 2 * (m + 1) - a->n[4];
+    r->n[5] = 0x3FFFFFFUL * 2 * (m + 1) - a->n[5];
+    r->n[6] = 0x3FFFFFFUL * 2 * (m + 1) - a->n[6];
+    r->n[7] = 0x3FFFFFFUL * 2 * (m + 1) - a->n[7];
+    r->n[8] = 0x3FFFFFFUL * 2 * (m + 1) - a->n[8];
+    r->n[9] = 0x03FFFFFUL * 2 * (m + 1) - a->n[9];
+#ifdef VERIFY
     r->magnitude = m + 1;
     r->normalized = 0;
+    secp256k1_fe_verify(r);
 #endif
-    r->n[0] = 0x3FFFC2FUL * (m + 1) - a->n[0];
-    r->n[1] = 0x3FFFFBFUL * (m + 1) - a->n[1];
-    r->n[2] = 0x3FFFFFFUL * (m + 1) - a->n[2];
-    r->n[3] = 0x3FFFFFFUL * (m + 1) - a->n[3];
-    r->n[4] = 0x3FFFFFFUL * (m + 1) - a->n[4];
-    r->n[5] = 0x3FFFFFFUL * (m + 1) - a->n[5];
-    r->n[6] = 0x3FFFFFFUL * (m + 1) - a->n[6];
-    r->n[7] = 0x3FFFFFFUL * (m + 1) - a->n[7];
-    r->n[8] = 0x3FFFFFFUL * (m + 1) - a->n[8];
-    r->n[9] = 0x03FFFFFUL * (m + 1) - a->n[9];
 }
 
-void static inline secp256k1_fe_mul_int(secp256k1_fe_t *r, int a) {
-#ifdef VERIFY
-    r->magnitude *= a;
-    r->normalized = 0;
-#endif
+SECP256K1_INLINE static void secp256k1_fe_mul_int(secp256k1_fe_t *r, int a) {
     r->n[0] *= a;
     r->n[1] *= a;
     r->n[2] *= a;
@@ -192,12 +223,16 @@ void static inline secp256k1_fe_mul_int(secp256k1_fe_t *r, int a) {
     r->n[7] *= a;
     r->n[8] *= a;
     r->n[9] *= a;
+#ifdef VERIFY
+    r->magnitude *= a;
+    r->normalized = 0;
+    secp256k1_fe_verify(r);
+#endif
 }
 
-void static inline secp256k1_fe_add(secp256k1_fe_t *r, const secp256k1_fe_t *a) {
+SECP256K1_INLINE static void secp256k1_fe_add(secp256k1_fe_t *r, const secp256k1_fe_t *a) {
 #ifdef VERIFY
-    r->magnitude += a->magnitude;
-    r->normalized = 0;
+    secp256k1_fe_verify(a);
 #endif
     r->n[0] += a->n[0];
     r->n[1] += a->n[1];
@@ -209,279 +244,645 @@ void static inline secp256k1_fe_add(secp256k1_fe_t *r, const secp256k1_fe_t *a) 
     r->n[7] += a->n[7];
     r->n[8] += a->n[8];
     r->n[9] += a->n[9];
-}
-
-void static inline secp256k1_fe_mul_inner(const uint32_t *a, const uint32_t *b, uint32_t *r) {
-    uint64_t c = (uint64_t)a[0] * b[0];
-    uint32_t t0 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)a[0] * b[1] +
-            (uint64_t)a[1] * b[0];
-    uint32_t t1 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)a[0] * b[2] +
-            (uint64_t)a[1] * b[1] +
-            (uint64_t)a[2] * b[0];
-    uint32_t t2 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)a[0] * b[3] +
-            (uint64_t)a[1] * b[2] +
-            (uint64_t)a[2] * b[1] +
-            (uint64_t)a[3] * b[0];
-    uint32_t t3 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)a[0] * b[4] +
-            (uint64_t)a[1] * b[3] +
-            (uint64_t)a[2] * b[2] +
-            (uint64_t)a[3] * b[1] +
-            (uint64_t)a[4] * b[0];
-    uint32_t t4 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)a[0] * b[5] +
-            (uint64_t)a[1] * b[4] +
-            (uint64_t)a[2] * b[3] +
-            (uint64_t)a[3] * b[2] +
-            (uint64_t)a[4] * b[1] +
-            (uint64_t)a[5] * b[0];
-    uint32_t t5 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)a[0] * b[6] +
-            (uint64_t)a[1] * b[5] +
-            (uint64_t)a[2] * b[4] +
-            (uint64_t)a[3] * b[3] +
-            (uint64_t)a[4] * b[2] +
-            (uint64_t)a[5] * b[1] +
-            (uint64_t)a[6] * b[0];
-    uint32_t t6 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)a[0] * b[7] +
-            (uint64_t)a[1] * b[6] +
-            (uint64_t)a[2] * b[5] +
-            (uint64_t)a[3] * b[4] +
-            (uint64_t)a[4] * b[3] +
-            (uint64_t)a[5] * b[2] +
-            (uint64_t)a[6] * b[1] +
-            (uint64_t)a[7] * b[0];
-    uint32_t t7 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)a[0] * b[8] +
-            (uint64_t)a[1] * b[7] +
-            (uint64_t)a[2] * b[6] +
-            (uint64_t)a[3] * b[5] +
-            (uint64_t)a[4] * b[4] +
-            (uint64_t)a[5] * b[3] +
-            (uint64_t)a[6] * b[2] +
-            (uint64_t)a[7] * b[1] +
-            (uint64_t)a[8] * b[0];
-    uint32_t t8 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)a[0] * b[9] +
-            (uint64_t)a[1] * b[8] +
-            (uint64_t)a[2] * b[7] +
-            (uint64_t)a[3] * b[6] +
-            (uint64_t)a[4] * b[5] +
-            (uint64_t)a[5] * b[4] +
-            (uint64_t)a[6] * b[3] +
-            (uint64_t)a[7] * b[2] +
-            (uint64_t)a[8] * b[1] +
-            (uint64_t)a[9] * b[0];
-    uint32_t t9 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)a[1] * b[9] +
-            (uint64_t)a[2] * b[8] +
-            (uint64_t)a[3] * b[7] +
-            (uint64_t)a[4] * b[6] +
-            (uint64_t)a[5] * b[5] +
-            (uint64_t)a[6] * b[4] +
-            (uint64_t)a[7] * b[3] +
-            (uint64_t)a[8] * b[2] +
-            (uint64_t)a[9] * b[1];
-    uint32_t t10 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)a[2] * b[9] +
-            (uint64_t)a[3] * b[8] +
-            (uint64_t)a[4] * b[7] +
-            (uint64_t)a[5] * b[6] +
-            (uint64_t)a[6] * b[5] +
-            (uint64_t)a[7] * b[4] +
-            (uint64_t)a[8] * b[3] +
-            (uint64_t)a[9] * b[2];
-    uint32_t t11 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)a[3] * b[9] +
-            (uint64_t)a[4] * b[8] +
-            (uint64_t)a[5] * b[7] +
-            (uint64_t)a[6] * b[6] +
-            (uint64_t)a[7] * b[5] +
-            (uint64_t)a[8] * b[4] +
-            (uint64_t)a[9] * b[3];
-    uint32_t t12 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)a[4] * b[9] +
-            (uint64_t)a[5] * b[8] +
-            (uint64_t)a[6] * b[7] +
-            (uint64_t)a[7] * b[6] +
-            (uint64_t)a[8] * b[5] +
-            (uint64_t)a[9] * b[4];
-    uint32_t t13 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)a[5] * b[9] +
-            (uint64_t)a[6] * b[8] +
-            (uint64_t)a[7] * b[7] +
-            (uint64_t)a[8] * b[6] +
-            (uint64_t)a[9] * b[5];
-    uint32_t t14 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)a[6] * b[9] +
-            (uint64_t)a[7] * b[8] +
-            (uint64_t)a[8] * b[7] +
-            (uint64_t)a[9] * b[6];
-    uint32_t t15 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)a[7] * b[9] +
-            (uint64_t)a[8] * b[8] +
-            (uint64_t)a[9] * b[7];
-    uint32_t t16 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)a[8] * b[9] +
-            (uint64_t)a[9] * b[8];
-    uint32_t t17 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)a[9] * b[9];
-    uint32_t t18 = c & 0x3FFFFFFUL; c = c >> 26;
-    uint32_t t19 = c;
-
-    c = t0 + (uint64_t)t10 * 0x3D10UL;
-    t0 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + t1 + (uint64_t)t10*0x400UL + (uint64_t)t11 * 0x3D10UL;
-    t1 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + t2 + (uint64_t)t11*0x400UL + (uint64_t)t12 * 0x3D10UL;
-    t2 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + t3 + (uint64_t)t12*0x400UL + (uint64_t)t13 * 0x3D10UL;
-    r[3] = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + t4 + (uint64_t)t13*0x400UL + (uint64_t)t14 * 0x3D10UL;
-    r[4] = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + t5 + (uint64_t)t14*0x400UL + (uint64_t)t15 * 0x3D10UL;
-    r[5] = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + t6 + (uint64_t)t15*0x400UL + (uint64_t)t16 * 0x3D10UL;
-    r[6] = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + t7 + (uint64_t)t16*0x400UL + (uint64_t)t17 * 0x3D10UL;
-    r[7] = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + t8 + (uint64_t)t17*0x400UL + (uint64_t)t18 * 0x3D10UL;
-    r[8] = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + t9 + (uint64_t)t18*0x400UL + (uint64_t)t19 * 0x1000003D10ULL;
-    r[9] = c & 0x03FFFFFUL; c = c >> 22;
-    uint64_t d = t0 + c * 0x3D1UL;
-    r[0] = d & 0x3FFFFFFUL; d = d >> 26;
-    d = d + t1 + c*0x40;
-    r[1] = d & 0x3FFFFFFUL; d = d >> 26;
-    r[2] = t2 + d;
-}
-
-void static inline secp256k1_fe_sqr_inner(const uint32_t *a, uint32_t *r) {
-    uint64_t c = (uint64_t)a[0] * a[0];
-    uint32_t t0 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)(a[0]*2) * a[1];
-    uint32_t t1 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)(a[0]*2) * a[2] +
-            (uint64_t)a[1] * a[1];
-    uint32_t t2 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)(a[0]*2) * a[3] +
-            (uint64_t)(a[1]*2) * a[2];
-    uint32_t t3 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)(a[0]*2) * a[4] +
-            (uint64_t)(a[1]*2) * a[3] +
-            (uint64_t)a[2] * a[2];
-    uint32_t t4 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)(a[0]*2) * a[5] +
-            (uint64_t)(a[1]*2) * a[4] +
-            (uint64_t)(a[2]*2) * a[3];
-    uint32_t t5 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)(a[0]*2) * a[6] +
-            (uint64_t)(a[1]*2) * a[5] +
-            (uint64_t)(a[2]*2) * a[4] +
-            (uint64_t)a[3] * a[3];
-    uint32_t t6 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)(a[0]*2) * a[7] +
-            (uint64_t)(a[1]*2) * a[6] +
-            (uint64_t)(a[2]*2) * a[5] +
-            (uint64_t)(a[3]*2) * a[4];
-    uint32_t t7 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)(a[0]*2) * a[8] +
-            (uint64_t)(a[1]*2) * a[7] +
-            (uint64_t)(a[2]*2) * a[6] +
-            (uint64_t)(a[3]*2) * a[5] +
-            (uint64_t)a[4] * a[4];
-    uint32_t t8 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)(a[0]*2) * a[9] +
-            (uint64_t)(a[1]*2) * a[8] +
-            (uint64_t)(a[2]*2) * a[7] +
-            (uint64_t)(a[3]*2) * a[6] +
-            (uint64_t)(a[4]*2) * a[5];
-    uint32_t t9 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)(a[1]*2) * a[9] +
-            (uint64_t)(a[2]*2) * a[8] +
-            (uint64_t)(a[3]*2) * a[7] +
-            (uint64_t)(a[4]*2) * a[6] +
-            (uint64_t)a[5] * a[5];
-    uint32_t t10 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)(a[2]*2) * a[9] +
-            (uint64_t)(a[3]*2) * a[8] +
-            (uint64_t)(a[4]*2) * a[7] +
-            (uint64_t)(a[5]*2) * a[6];
-    uint32_t t11 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)(a[3]*2) * a[9] +
-            (uint64_t)(a[4]*2) * a[8] +
-            (uint64_t)(a[5]*2) * a[7] +
-            (uint64_t)a[6] * a[6];
-    uint32_t t12 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)(a[4]*2) * a[9] +
-            (uint64_t)(a[5]*2) * a[8] +
-            (uint64_t)(a[6]*2) * a[7];
-    uint32_t t13 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)(a[5]*2) * a[9] +
-            (uint64_t)(a[6]*2) * a[8] +
-            (uint64_t)a[7] * a[7];
-    uint32_t t14 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)(a[6]*2) * a[9] +
-            (uint64_t)(a[7]*2) * a[8];
-    uint32_t t15 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)(a[7]*2) * a[9] +
-            (uint64_t)a[8] * a[8];
-    uint32_t t16 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)(a[8]*2) * a[9];
-    uint32_t t17 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + (uint64_t)a[9] * a[9];
-    uint32_t t18 = c & 0x3FFFFFFUL; c = c >> 26;
-    uint32_t t19 = c;
-
-    c = t0 + (uint64_t)t10 * 0x3D10UL;
-    t0 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + t1 + (uint64_t)t10*0x400UL + (uint64_t)t11 * 0x3D10UL;
-    t1 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + t2 + (uint64_t)t11*0x400UL + (uint64_t)t12 * 0x3D10UL;
-    t2 = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + t3 + (uint64_t)t12*0x400UL + (uint64_t)t13 * 0x3D10UL;
-    r[3] = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + t4 + (uint64_t)t13*0x400UL + (uint64_t)t14 * 0x3D10UL;
-    r[4] = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + t5 + (uint64_t)t14*0x400UL + (uint64_t)t15 * 0x3D10UL;
-    r[5] = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + t6 + (uint64_t)t15*0x400UL + (uint64_t)t16 * 0x3D10UL;
-    r[6] = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + t7 + (uint64_t)t16*0x400UL + (uint64_t)t17 * 0x3D10UL;
-    r[7] = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + t8 + (uint64_t)t17*0x400UL + (uint64_t)t18 * 0x3D10UL;
-    r[8] = c & 0x3FFFFFFUL; c = c >> 26;
-    c = c + t9 + (uint64_t)t18*0x400UL + (uint64_t)t19 * 0x1000003D10ULL;
-    r[9] = c & 0x03FFFFFUL; c = c >> 22;
-    uint64_t d = t0 + c * 0x3D1UL;
-    r[0] = d & 0x3FFFFFFUL; d = d >> 26;
-    d = d + t1 + c*0x40;
-    r[1] = d & 0x3FFFFFFUL; d = d >> 26;
-    r[2] = t2 + d;
-}
-
-
-void static secp256k1_fe_mul(secp256k1_fe_t *r, const secp256k1_fe_t *a, const secp256k1_fe_t *b) {
 #ifdef VERIFY
-    assert(a->magnitude <= 8);
-    assert(b->magnitude <= 8);
-    r->magnitude = 1;
+    r->magnitude += a->magnitude;
     r->normalized = 0;
+    secp256k1_fe_verify(r);
+#endif
+}
+
+#ifdef VERIFY
+#define VERIFY_BITS(x, n) VERIFY_CHECK(((x) >> (n)) == 0)
+#else
+#define VERIFY_BITS(x, n) do { } while(0)
+#endif
+
+SECP256K1_INLINE static void secp256k1_fe_mul_inner(const uint32_t *a, const uint32_t *b, uint32_t *r) {
+    VERIFY_BITS(a[0], 30);
+    VERIFY_BITS(a[1], 30);
+    VERIFY_BITS(a[2], 30);
+    VERIFY_BITS(a[3], 30);
+    VERIFY_BITS(a[4], 30);
+    VERIFY_BITS(a[5], 30);
+    VERIFY_BITS(a[6], 30);
+    VERIFY_BITS(a[7], 30);
+    VERIFY_BITS(a[8], 30);
+    VERIFY_BITS(a[9], 26);
+    VERIFY_BITS(b[0], 30);
+    VERIFY_BITS(b[1], 30);
+    VERIFY_BITS(b[2], 30);
+    VERIFY_BITS(b[3], 30);
+    VERIFY_BITS(b[4], 30);
+    VERIFY_BITS(b[5], 30);
+    VERIFY_BITS(b[6], 30);
+    VERIFY_BITS(b[7], 30);
+    VERIFY_BITS(b[8], 30);
+    VERIFY_BITS(b[9], 26);
+
+    const uint32_t M = 0x3FFFFFFUL, R0 = 0x3D10UL, R1 = 0x400UL;
+    /** [... a b c] is a shorthand for ... + a<<52 + b<<26 + c<<0 mod n.
+     *  px is a shorthand for sum(a[i]*b[x-i], i=0..x).
+     *  Note that [x 0 0 0 0 0 0 0 0 0 0] = [x*R1 x*R0].
+     */
+
+    uint64_t c, d;
+
+    d  = (uint64_t)a[0] * b[9]
+       + (uint64_t)a[1] * b[8]
+       + (uint64_t)a[2] * b[7]
+       + (uint64_t)a[3] * b[6]
+       + (uint64_t)a[4] * b[5]
+       + (uint64_t)a[5] * b[4]
+       + (uint64_t)a[6] * b[3]
+       + (uint64_t)a[7] * b[2]
+       + (uint64_t)a[8] * b[1]
+       + (uint64_t)a[9] * b[0];
+    /* VERIFY_BITS(d, 64); */
+    /* [d 0 0 0 0 0 0 0 0 0] = [p9 0 0 0 0 0 0 0 0 0] */
+    uint32_t t9 = d & M; d >>= 26;
+    VERIFY_BITS(t9, 26);
+    VERIFY_BITS(d, 38);
+    /* [d t9 0 0 0 0 0 0 0 0 0] = [p9 0 0 0 0 0 0 0 0 0] */
+
+    c  = (uint64_t)a[0] * b[0];
+    VERIFY_BITS(c, 60);
+    /* [d t9 0 0 0 0 0 0 0 0 c] = [p9 0 0 0 0 0 0 0 0 p0] */
+    d += (uint64_t)a[1] * b[9]
+       + (uint64_t)a[2] * b[8]
+       + (uint64_t)a[3] * b[7]
+       + (uint64_t)a[4] * b[6]
+       + (uint64_t)a[5] * b[5]
+       + (uint64_t)a[6] * b[4]
+       + (uint64_t)a[7] * b[3]
+       + (uint64_t)a[8] * b[2]
+       + (uint64_t)a[9] * b[1];
+    VERIFY_BITS(d, 63);
+    /* [d t9 0 0 0 0 0 0 0 0 c] = [p10 p9 0 0 0 0 0 0 0 0 p0] */
+    uint64_t u0 = d & M; d >>= 26; c += u0 * R0;
+    VERIFY_BITS(u0, 26);
+    VERIFY_BITS(d, 37);
+    VERIFY_BITS(c, 61);
+    /* [d u0 t9 0 0 0 0 0 0 0 0 c-u0*R0] = [p10 p9 0 0 0 0 0 0 0 0 p0] */
+    uint32_t t0 = c & M; c >>= 26; c += u0 * R1;
+    VERIFY_BITS(t0, 26);
+    VERIFY_BITS(c, 37);
+    /* [d u0 t9 0 0 0 0 0 0 0 c-u0*R1 t0-u0*R0] = [p10 p9 0 0 0 0 0 0 0 0 p0] */
+    /* [d 0 t9 0 0 0 0 0 0 0 c t0] = [p10 p9 0 0 0 0 0 0 0 0 p0] */
+
+    c += (uint64_t)a[0] * b[1]
+       + (uint64_t)a[1] * b[0];
+    VERIFY_BITS(c, 62);
+    /* [d 0 t9 0 0 0 0 0 0 0 c t0] = [p10 p9 0 0 0 0 0 0 0 p1 p0] */
+    d += (uint64_t)a[2] * b[9]
+       + (uint64_t)a[3] * b[8]
+       + (uint64_t)a[4] * b[7]
+       + (uint64_t)a[5] * b[6]
+       + (uint64_t)a[6] * b[5]
+       + (uint64_t)a[7] * b[4]
+       + (uint64_t)a[8] * b[3]
+       + (uint64_t)a[9] * b[2];
+    VERIFY_BITS(d, 63);
+    /* [d 0 t9 0 0 0 0 0 0 0 c t0] = [p11 p10 p9 0 0 0 0 0 0 0 p1 p0] */
+    uint64_t u1 = d & M; d >>= 26; c += u1 * R0;
+    VERIFY_BITS(u1, 26);
+    VERIFY_BITS(d, 37);
+    VERIFY_BITS(c, 63);
+    /* [d u1 0 t9 0 0 0 0 0 0 0 c-u1*R0 t0] = [p11 p10 p9 0 0 0 0 0 0 0 p1 p0] */
+    uint32_t t1 = c & M; c >>= 26; c += u1 * R1;
+    VERIFY_BITS(t1, 26);
+    VERIFY_BITS(c, 38);
+    /* [d u1 0 t9 0 0 0 0 0 0 c-u1*R1 t1-u1*R0 t0] = [p11 p10 p9 0 0 0 0 0 0 0 p1 p0] */
+    /* [d 0 0 t9 0 0 0 0 0 0 c t1 t0] = [p11 p10 p9 0 0 0 0 0 0 0 p1 p0] */
+
+    c += (uint64_t)a[0] * b[2]
+       + (uint64_t)a[1] * b[1]
+       + (uint64_t)a[2] * b[0];
+    VERIFY_BITS(c, 62);
+    /* [d 0 0 t9 0 0 0 0 0 0 c t1 t0] = [p11 p10 p9 0 0 0 0 0 0 p2 p1 p0] */
+    d += (uint64_t)a[3] * b[9]
+       + (uint64_t)a[4] * b[8]
+       + (uint64_t)a[5] * b[7]
+       + (uint64_t)a[6] * b[6]
+       + (uint64_t)a[7] * b[5]
+       + (uint64_t)a[8] * b[4]
+       + (uint64_t)a[9] * b[3];
+    VERIFY_BITS(d, 63);
+    /* [d 0 0 t9 0 0 0 0 0 0 c t1 t0] = [p12 p11 p10 p9 0 0 0 0 0 0 p2 p1 p0] */
+    uint64_t u2 = d & M; d >>= 26; c += u2 * R0;
+    VERIFY_BITS(u2, 26);
+    VERIFY_BITS(d, 37);
+    VERIFY_BITS(c, 63);
+    /* [d u2 0 0 t9 0 0 0 0 0 0 c-u2*R0 t1 t0] = [p12 p11 p10 p9 0 0 0 0 0 0 p2 p1 p0] */
+    uint32_t t2 = c & M; c >>= 26; c += u2 * R1;
+    VERIFY_BITS(t2, 26);
+    VERIFY_BITS(c, 38);
+    /* [d u2 0 0 t9 0 0 0 0 0 c-u2*R1 t2-u2*R0 t1 t0] = [p12 p11 p10 p9 0 0 0 0 0 0 p2 p1 p0] */
+    /* [d 0 0 0 t9 0 0 0 0 0 c t2 t1 t0] = [p12 p11 p10 p9 0 0 0 0 0 0 p2 p1 p0] */
+
+    c += (uint64_t)a[0] * b[3]
+       + (uint64_t)a[1] * b[2]
+       + (uint64_t)a[2] * b[1]
+       + (uint64_t)a[3] * b[0];
+    VERIFY_BITS(c, 63);
+    /* [d 0 0 0 t9 0 0 0 0 0 c t2 t1 t0] = [p12 p11 p10 p9 0 0 0 0 0 p3 p2 p1 p0] */
+    d += (uint64_t)a[4] * b[9]
+       + (uint64_t)a[5] * b[8]
+       + (uint64_t)a[6] * b[7]
+       + (uint64_t)a[7] * b[6]
+       + (uint64_t)a[8] * b[5]
+       + (uint64_t)a[9] * b[4];
+    VERIFY_BITS(d, 63);
+    /* [d 0 0 0 t9 0 0 0 0 0 c t2 t1 t0] = [p13 p12 p11 p10 p9 0 0 0 0 0 p3 p2 p1 p0] */
+    uint64_t u3 = d & M; d >>= 26; c += u3 * R0;
+    VERIFY_BITS(u3, 26);
+    VERIFY_BITS(d, 37);
+    /* VERIFY_BITS(c, 64); */
+    /* [d u3 0 0 0 t9 0 0 0 0 0 c-u3*R0 t2 t1 t0] = [p13 p12 p11 p10 p9 0 0 0 0 0 p3 p2 p1 p0] */
+    uint32_t t3 = c & M; c >>= 26; c += u3 * R1;
+    VERIFY_BITS(t3, 26);
+    VERIFY_BITS(c, 39);
+    /* [d u3 0 0 0 t9 0 0 0 0 c-u3*R1 t3-u3*R0 t2 t1 t0] = [p13 p12 p11 p10 p9 0 0 0 0 0 p3 p2 p1 p0] */
+    /* [d 0 0 0 0 t9 0 0 0 0 c t3 t2 t1 t0] = [p13 p12 p11 p10 p9 0 0 0 0 0 p3 p2 p1 p0] */
+
+    c += (uint64_t)a[0] * b[4]
+       + (uint64_t)a[1] * b[3]
+       + (uint64_t)a[2] * b[2]
+       + (uint64_t)a[3] * b[1]
+       + (uint64_t)a[4] * b[0];
+    VERIFY_BITS(c, 63);
+    /* [d 0 0 0 0 t9 0 0 0 0 c t3 t2 t1 t0] = [p13 p12 p11 p10 p9 0 0 0 0 p4 p3 p2 p1 p0] */
+    d += (uint64_t)a[5] * b[9]
+       + (uint64_t)a[6] * b[8]
+       + (uint64_t)a[7] * b[7]
+       + (uint64_t)a[8] * b[6]
+       + (uint64_t)a[9] * b[5];
+    VERIFY_BITS(d, 62);
+    /* [d 0 0 0 0 t9 0 0 0 0 c t3 t2 t1 t0] = [p14 p13 p12 p11 p10 p9 0 0 0 0 p4 p3 p2 p1 p0] */
+    uint64_t u4 = d & M; d >>= 26; c += u4 * R0;
+    VERIFY_BITS(u4, 26);
+    VERIFY_BITS(d, 36);
+    /* VERIFY_BITS(c, 64); */
+    /* [d u4 0 0 0 0 t9 0 0 0 0 c-u4*R0 t3 t2 t1 t0] = [p14 p13 p12 p11 p10 p9 0 0 0 0 p4 p3 p2 p1 p0] */
+    uint32_t t4 = c & M; c >>= 26; c += u4 * R1;
+    VERIFY_BITS(t4, 26);
+    VERIFY_BITS(c, 39);
+    /* [d u4 0 0 0 0 t9 0 0 0 c-u4*R1 t4-u4*R0 t3 t2 t1 t0] = [p14 p13 p12 p11 p10 p9 0 0 0 0 p4 p3 p2 p1 p0] */
+    /* [d 0 0 0 0 0 t9 0 0 0 c t4 t3 t2 t1 t0] = [p14 p13 p12 p11 p10 p9 0 0 0 0 p4 p3 p2 p1 p0] */
+
+    c += (uint64_t)a[0] * b[5]
+       + (uint64_t)a[1] * b[4]
+       + (uint64_t)a[2] * b[3]
+       + (uint64_t)a[3] * b[2]
+       + (uint64_t)a[4] * b[1]
+       + (uint64_t)a[5] * b[0];
+    VERIFY_BITS(c, 63);
+    /* [d 0 0 0 0 0 t9 0 0 0 c t4 t3 t2 t1 t0] = [p14 p13 p12 p11 p10 p9 0 0 0 p5 p4 p3 p2 p1 p0] */
+    d += (uint64_t)a[6] * b[9]
+       + (uint64_t)a[7] * b[8]
+       + (uint64_t)a[8] * b[7]
+       + (uint64_t)a[9] * b[6];
+    VERIFY_BITS(d, 62);
+    /* [d 0 0 0 0 0 t9 0 0 0 c t4 t3 t2 t1 t0] = [p15 p14 p13 p12 p11 p10 p9 0 0 0 p5 p4 p3 p2 p1 p0] */
+    uint64_t u5 = d & M; d >>= 26; c += u5 * R0;
+    VERIFY_BITS(u5, 26);
+    VERIFY_BITS(d, 36);
+    /* VERIFY_BITS(c, 64); */
+    /* [d u5 0 0 0 0 0 t9 0 0 0 c-u5*R0 t4 t3 t2 t1 t0] = [p15 p14 p13 p12 p11 p10 p9 0 0 0 p5 p4 p3 p2 p1 p0] */
+    uint32_t t5 = c & M; c >>= 26; c += u5 * R1;
+    VERIFY_BITS(t5, 26);
+    VERIFY_BITS(c, 39);
+    /* [d u5 0 0 0 0 0 t9 0 0 c-u5*R1 t5-u5*R0 t4 t3 t2 t1 t0] = [p15 p14 p13 p12 p11 p10 p9 0 0 0 p5 p4 p3 p2 p1 p0] */
+    /* [d 0 0 0 0 0 0 t9 0 0 c t5 t4 t3 t2 t1 t0] = [p15 p14 p13 p12 p11 p10 p9 0 0 0 p5 p4 p3 p2 p1 p0] */
+
+    c += (uint64_t)a[0] * b[6]
+       + (uint64_t)a[1] * b[5]
+       + (uint64_t)a[2] * b[4]
+       + (uint64_t)a[3] * b[3]
+       + (uint64_t)a[4] * b[2]
+       + (uint64_t)a[5] * b[1]
+       + (uint64_t)a[6] * b[0];
+    VERIFY_BITS(c, 63);
+    /* [d 0 0 0 0 0 0 t9 0 0 c t5 t4 t3 t2 t1 t0] = [p15 p14 p13 p12 p11 p10 p9 0 0 p6 p5 p4 p3 p2 p1 p0] */
+    d += (uint64_t)a[7] * b[9]
+       + (uint64_t)a[8] * b[8]
+       + (uint64_t)a[9] * b[7];
+    VERIFY_BITS(d, 61);
+    /* [d 0 0 0 0 0 0 t9 0 0 c t5 t4 t3 t2 t1 t0] = [p16 p15 p14 p13 p12 p11 p10 p9 0 0 p6 p5 p4 p3 p2 p1 p0] */
+    uint64_t u6 = d & M; d >>= 26; c += u6 * R0;
+    VERIFY_BITS(u6, 26);
+    VERIFY_BITS(d, 35);
+    /* VERIFY_BITS(c, 64); */
+    /* [d u6 0 0 0 0 0 0 t9 0 0 c-u6*R0 t5 t4 t3 t2 t1 t0] = [p16 p15 p14 p13 p12 p11 p10 p9 0 0 p6 p5 p4 p3 p2 p1 p0] */
+    uint32_t t6 = c & M; c >>= 26; c += u6 * R1;
+    VERIFY_BITS(t6, 26);
+    VERIFY_BITS(c, 39);
+    /* [d u6 0 0 0 0 0 0 t9 0 c-u6*R1 t6-u6*R0 t5 t4 t3 t2 t1 t0] = [p16 p15 p14 p13 p12 p11 p10 p9 0 0 p6 p5 p4 p3 p2 p1 p0] */
+    /* [d 0 0 0 0 0 0 0 t9 0 c t6 t5 t4 t3 t2 t1 t0] = [p16 p15 p14 p13 p12 p11 p10 p9 0 0 p6 p5 p4 p3 p2 p1 p0] */
+
+    c += (uint64_t)a[0] * b[7]
+       + (uint64_t)a[1] * b[6]
+       + (uint64_t)a[2] * b[5]
+       + (uint64_t)a[3] * b[4]
+       + (uint64_t)a[4] * b[3]
+       + (uint64_t)a[5] * b[2]
+       + (uint64_t)a[6] * b[1]
+       + (uint64_t)a[7] * b[0];
+    /* VERIFY_BITS(c, 64); */
+    VERIFY_CHECK(c <= 0x8000007C00000007ULL);
+    /* [d 0 0 0 0 0 0 0 t9 0 c t6 t5 t4 t3 t2 t1 t0] = [p16 p15 p14 p13 p12 p11 p10 p9 0 p7 p6 p5 p4 p3 p2 p1 p0] */
+    d += (uint64_t)a[8] * b[9]
+       + (uint64_t)a[9] * b[8];
+    VERIFY_BITS(d, 58);
+    /* [d 0 0 0 0 0 0 0 t9 0 c t6 t5 t4 t3 t2 t1 t0] = [p17 p16 p15 p14 p13 p12 p11 p10 p9 0 p7 p6 p5 p4 p3 p2 p1 p0] */
+    uint64_t u7 = d & M; d >>= 26; c += u7 * R0;
+    VERIFY_BITS(u7, 26);
+    VERIFY_BITS(d, 32);
+    /* VERIFY_BITS(c, 64); */
+    VERIFY_CHECK(c <= 0x800001703FFFC2F7ULL);
+    /* [d u7 0 0 0 0 0 0 0 t9 0 c-u7*R0 t6 t5 t4 t3 t2 t1 t0] = [p17 p16 p15 p14 p13 p12 p11 p10 p9 0 p7 p6 p5 p4 p3 p2 p1 p0] */
+    uint32_t t7 = c & M; c >>= 26; c += u7 * R1;
+    VERIFY_BITS(t7, 26);
+    VERIFY_BITS(c, 38);
+    /* [d u7 0 0 0 0 0 0 0 t9 c-u7*R1 t7-u7*R0 t6 t5 t4 t3 t2 t1 t0] = [p17 p16 p15 p14 p13 p12 p11 p10 p9 0 p7 p6 p5 p4 p3 p2 p1 p0] */
+    /* [d 0 0 0 0 0 0 0 0 t9 c t7 t6 t5 t4 t3 t2 t1 t0] = [p17 p16 p15 p14 p13 p12 p11 p10 p9 0 p7 p6 p5 p4 p3 p2 p1 p0] */
+
+    c += (uint64_t)a[0] * b[8]
+       + (uint64_t)a[1] * b[7]
+       + (uint64_t)a[2] * b[6]
+       + (uint64_t)a[3] * b[5]
+       + (uint64_t)a[4] * b[4]
+       + (uint64_t)a[5] * b[3]
+       + (uint64_t)a[6] * b[2]
+       + (uint64_t)a[7] * b[1]
+       + (uint64_t)a[8] * b[0];
+    /* VERIFY_BITS(c, 64); */
+    VERIFY_CHECK(c <= 0x9000007B80000008ULL);
+    /* [d 0 0 0 0 0 0 0 0 t9 c t7 t6 t5 t4 t3 t2 t1 t0] = [p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+    d += (uint64_t)a[9] * b[9];
+    VERIFY_BITS(d, 57);
+    /* [d 0 0 0 0 0 0 0 0 t9 c t7 t6 t5 t4 t3 t2 t1 t0] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+    uint64_t u8 = d & M; d >>= 26; c += u8 * R0;
+    VERIFY_BITS(u8, 26);
+    VERIFY_BITS(d, 31);
+    /* VERIFY_BITS(c, 64); */
+    VERIFY_CHECK(c <= 0x9000016FBFFFC2F8ULL);
+    /* [d u8 0 0 0 0 0 0 0 0 t9 c-u8*R0 t7 t6 t5 t4 t3 t2 t1 t0] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+
+    r[3] = t3;
+    VERIFY_BITS(r[3], 26);
+    /* [d u8 0 0 0 0 0 0 0 0 t9 c-u8*R0 t7 t6 t5 t4 r3 t2 t1 t0] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+    r[4] = t4;
+    VERIFY_BITS(r[4], 26);
+    /* [d u8 0 0 0 0 0 0 0 0 t9 c-u8*R0 t7 t6 t5 r4 r3 t2 t1 t0] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+    r[5] = t5;
+    VERIFY_BITS(r[5], 26);
+    /* [d u8 0 0 0 0 0 0 0 0 t9 c-u8*R0 t7 t6 r5 r4 r3 t2 t1 t0] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+    r[6] = t6;
+    VERIFY_BITS(r[6], 26);
+    /* [d u8 0 0 0 0 0 0 0 0 t9 c-u8*R0 t7 r6 r5 r4 r3 t2 t1 t0] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+    r[7] = t7;
+    VERIFY_BITS(r[7], 26);
+    /* [d u8 0 0 0 0 0 0 0 0 t9 c-u8*R0 r7 r6 r5 r4 r3 t2 t1 t0] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+
+    r[8] = c & M; c >>= 26; c += u8 * R1;
+    VERIFY_BITS(r[8], 26);
+    VERIFY_BITS(c, 39);
+    /* [d u8 0 0 0 0 0 0 0 0 t9+c-u8*R1 r8-u8*R0 r7 r6 r5 r4 r3 t2 t1 t0] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+    /* [d 0 0 0 0 0 0 0 0 0 t9+c r8 r7 r6 r5 r4 r3 t2 t1 t0] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+    c   += d * R0 + t9;
+    VERIFY_BITS(c, 45);
+    /* [d 0 0 0 0 0 0 0 0 0 c-d*R0 r8 r7 r6 r5 r4 r3 t2 t1 t0] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+    r[9] = c & (M >> 4); c >>= 22; c += d * (R1 << 4);
+    VERIFY_BITS(r[9], 22);
+    VERIFY_BITS(c, 46);
+    /* [d 0 0 0 0 0 0 0 0 r9+((c-d*R1<<4)<<22)-d*R0 r8 r7 r6 r5 r4 r3 t2 t1 t0] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+    /* [d 0 0 0 0 0 0 0 -d*R1 r9+(c<<22)-d*R0 r8 r7 r6 r5 r4 r3 t2 t1 t0] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+    /* [r9+(c<<22) r8 r7 r6 r5 r4 r3 t2 t1 t0] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+
+    d    = c * (R0 >> 4) + t0;
+    VERIFY_BITS(d, 56);
+    /* [r9+(c<<22) r8 r7 r6 r5 r4 r3 t2 t1 d-c*R0>>4] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+    r[0] = d & M; d >>= 26;
+    VERIFY_BITS(r[0], 26);
+    VERIFY_BITS(d, 30);
+    /* [r9+(c<<22) r8 r7 r6 r5 r4 r3 t2 t1+d r0-c*R0>>4] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+    d   += c * (R1 >> 4) + t1;
+    VERIFY_BITS(d, 53);
+    VERIFY_CHECK(d <= 0x10000003FFFFBFULL);
+    /* [r9+(c<<22) r8 r7 r6 r5 r4 r3 t2 d-c*R1>>4 r0-c*R0>>4] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+    /* [r9 r8 r7 r6 r5 r4 r3 t2 d r0] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+    r[1] = d & M; d >>= 26;
+    VERIFY_BITS(r[1], 26);
+    VERIFY_BITS(d, 27);
+    VERIFY_CHECK(d <= 0x4000000ULL);
+    /* [r9 r8 r7 r6 r5 r4 r3 t2+d r1 r0] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+    d   += t2;
+    VERIFY_BITS(d, 27);
+    /* [r9 r8 r7 r6 r5 r4 r3 d r1 r0] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+    r[2] = d;
+    VERIFY_BITS(r[2], 27);
+    /* [r9 r8 r7 r6 r5 r4 r3 r2 r1 r0] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+}
+
+SECP256K1_INLINE static void secp256k1_fe_sqr_inner(const uint32_t *a, uint32_t *r) {
+    VERIFY_BITS(a[0], 30);
+    VERIFY_BITS(a[1], 30);
+    VERIFY_BITS(a[2], 30);
+    VERIFY_BITS(a[3], 30);
+    VERIFY_BITS(a[4], 30);
+    VERIFY_BITS(a[5], 30);
+    VERIFY_BITS(a[6], 30);
+    VERIFY_BITS(a[7], 30);
+    VERIFY_BITS(a[8], 30);
+    VERIFY_BITS(a[9], 26);
+
+    const uint32_t M = 0x3FFFFFFUL, R0 = 0x3D10UL, R1 = 0x400UL;
+    /** [... a b c] is a shorthand for ... + a<<52 + b<<26 + c<<0 mod n.
+     *  px is a shorthand for sum(a[i]*a[x-i], i=0..x).
+     *  Note that [x 0 0 0 0 0 0 0 0 0 0] = [x*R1 x*R0].
+     */
+
+    uint64_t c, d;
+
+    d  = (uint64_t)(a[0]*2) * a[9]
+       + (uint64_t)(a[1]*2) * a[8]
+       + (uint64_t)(a[2]*2) * a[7]
+       + (uint64_t)(a[3]*2) * a[6]
+       + (uint64_t)(a[4]*2) * a[5];
+    /* VERIFY_BITS(d, 64); */
+    /* [d 0 0 0 0 0 0 0 0 0] = [p9 0 0 0 0 0 0 0 0 0] */
+    uint32_t t9 = d & M; d >>= 26;
+    VERIFY_BITS(t9, 26);
+    VERIFY_BITS(d, 38);
+    /* [d t9 0 0 0 0 0 0 0 0 0] = [p9 0 0 0 0 0 0 0 0 0] */
+
+    c  = (uint64_t)a[0] * a[0];
+    VERIFY_BITS(c, 60);
+    /* [d t9 0 0 0 0 0 0 0 0 c] = [p9 0 0 0 0 0 0 0 0 p0] */
+    d += (uint64_t)(a[1]*2) * a[9]
+       + (uint64_t)(a[2]*2) * a[8]
+       + (uint64_t)(a[3]*2) * a[7]
+       + (uint64_t)(a[4]*2) * a[6]
+       + (uint64_t)a[5] * a[5];
+    VERIFY_BITS(d, 63);
+    /* [d t9 0 0 0 0 0 0 0 0 c] = [p10 p9 0 0 0 0 0 0 0 0 p0] */
+    uint64_t u0 = d & M; d >>= 26; c += u0 * R0;
+    VERIFY_BITS(u0, 26);
+    VERIFY_BITS(d, 37);
+    VERIFY_BITS(c, 61);
+    /* [d u0 t9 0 0 0 0 0 0 0 0 c-u0*R0] = [p10 p9 0 0 0 0 0 0 0 0 p0] */
+    uint32_t t0 = c & M; c >>= 26; c += u0 * R1;
+    VERIFY_BITS(t0, 26);
+    VERIFY_BITS(c, 37);
+    /* [d u0 t9 0 0 0 0 0 0 0 c-u0*R1 t0-u0*R0] = [p10 p9 0 0 0 0 0 0 0 0 p0] */
+    /* [d 0 t9 0 0 0 0 0 0 0 c t0] = [p10 p9 0 0 0 0 0 0 0 0 p0] */
+
+    c += (uint64_t)(a[0]*2) * a[1];
+    VERIFY_BITS(c, 62);
+    /* [d 0 t9 0 0 0 0 0 0 0 c t0] = [p10 p9 0 0 0 0 0 0 0 p1 p0] */
+    d += (uint64_t)(a[2]*2) * a[9]
+       + (uint64_t)(a[3]*2) * a[8]
+       + (uint64_t)(a[4]*2) * a[7]
+       + (uint64_t)(a[5]*2) * a[6];
+    VERIFY_BITS(d, 63);
+    /* [d 0 t9 0 0 0 0 0 0 0 c t0] = [p11 p10 p9 0 0 0 0 0 0 0 p1 p0] */
+    uint64_t u1 = d & M; d >>= 26; c += u1 * R0;
+    VERIFY_BITS(u1, 26);
+    VERIFY_BITS(d, 37);
+    VERIFY_BITS(c, 63);
+    /* [d u1 0 t9 0 0 0 0 0 0 0 c-u1*R0 t0] = [p11 p10 p9 0 0 0 0 0 0 0 p1 p0] */
+    uint32_t t1 = c & M; c >>= 26; c += u1 * R1;
+    VERIFY_BITS(t1, 26);
+    VERIFY_BITS(c, 38);
+    /* [d u1 0 t9 0 0 0 0 0 0 c-u1*R1 t1-u1*R0 t0] = [p11 p10 p9 0 0 0 0 0 0 0 p1 p0] */
+    /* [d 0 0 t9 0 0 0 0 0 0 c t1 t0] = [p11 p10 p9 0 0 0 0 0 0 0 p1 p0] */
+
+    c += (uint64_t)(a[0]*2) * a[2]
+       + (uint64_t)a[1] * a[1];
+    VERIFY_BITS(c, 62);
+    /* [d 0 0 t9 0 0 0 0 0 0 c t1 t0] = [p11 p10 p9 0 0 0 0 0 0 p2 p1 p0] */
+    d += (uint64_t)(a[3]*2) * a[9]
+       + (uint64_t)(a[4]*2) * a[8]
+       + (uint64_t)(a[5]*2) * a[7]
+       + (uint64_t)a[6] * a[6];
+    VERIFY_BITS(d, 63);
+    /* [d 0 0 t9 0 0 0 0 0 0 c t1 t0] = [p12 p11 p10 p9 0 0 0 0 0 0 p2 p1 p0] */
+    uint64_t u2 = d & M; d >>= 26; c += u2 * R0;
+    VERIFY_BITS(u2, 26);
+    VERIFY_BITS(d, 37);
+    VERIFY_BITS(c, 63);
+    /* [d u2 0 0 t9 0 0 0 0 0 0 c-u2*R0 t1 t0] = [p12 p11 p10 p9 0 0 0 0 0 0 p2 p1 p0] */
+    uint32_t t2 = c & M; c >>= 26; c += u2 * R1;
+    VERIFY_BITS(t2, 26);
+    VERIFY_BITS(c, 38);
+    /* [d u2 0 0 t9 0 0 0 0 0 c-u2*R1 t2-u2*R0 t1 t0] = [p12 p11 p10 p9 0 0 0 0 0 0 p2 p1 p0] */
+    /* [d 0 0 0 t9 0 0 0 0 0 c t2 t1 t0] = [p12 p11 p10 p9 0 0 0 0 0 0 p2 p1 p0] */
+
+    c += (uint64_t)(a[0]*2) * a[3]
+       + (uint64_t)(a[1]*2) * a[2];
+    VERIFY_BITS(c, 63);
+    /* [d 0 0 0 t9 0 0 0 0 0 c t2 t1 t0] = [p12 p11 p10 p9 0 0 0 0 0 p3 p2 p1 p0] */
+    d += (uint64_t)(a[4]*2) * a[9]
+       + (uint64_t)(a[5]*2) * a[8]
+       + (uint64_t)(a[6]*2) * a[7];
+    VERIFY_BITS(d, 63);
+    /* [d 0 0 0 t9 0 0 0 0 0 c t2 t1 t0] = [p13 p12 p11 p10 p9 0 0 0 0 0 p3 p2 p1 p0] */
+    uint64_t u3 = d & M; d >>= 26; c += u3 * R0;
+    VERIFY_BITS(u3, 26);
+    VERIFY_BITS(d, 37);
+    /* VERIFY_BITS(c, 64); */
+    /* [d u3 0 0 0 t9 0 0 0 0 0 c-u3*R0 t2 t1 t0] = [p13 p12 p11 p10 p9 0 0 0 0 0 p3 p2 p1 p0] */
+    uint32_t t3 = c & M; c >>= 26; c += u3 * R1;
+    VERIFY_BITS(t3, 26);
+    VERIFY_BITS(c, 39);
+    /* [d u3 0 0 0 t9 0 0 0 0 c-u3*R1 t3-u3*R0 t2 t1 t0] = [p13 p12 p11 p10 p9 0 0 0 0 0 p3 p2 p1 p0] */
+    /* [d 0 0 0 0 t9 0 0 0 0 c t3 t2 t1 t0] = [p13 p12 p11 p10 p9 0 0 0 0 0 p3 p2 p1 p0] */
+
+    c += (uint64_t)(a[0]*2) * a[4]
+       + (uint64_t)(a[1]*2) * a[3]
+       + (uint64_t)a[2] * a[2];
+    VERIFY_BITS(c, 63);
+    /* [d 0 0 0 0 t9 0 0 0 0 c t3 t2 t1 t0] = [p13 p12 p11 p10 p9 0 0 0 0 p4 p3 p2 p1 p0] */
+    d += (uint64_t)(a[5]*2) * a[9]
+       + (uint64_t)(a[6]*2) * a[8]
+       + (uint64_t)a[7] * a[7];
+    VERIFY_BITS(d, 62);
+    /* [d 0 0 0 0 t9 0 0 0 0 c t3 t2 t1 t0] = [p14 p13 p12 p11 p10 p9 0 0 0 0 p4 p3 p2 p1 p0] */
+    uint64_t u4 = d & M; d >>= 26; c += u4 * R0;
+    VERIFY_BITS(u4, 26);
+    VERIFY_BITS(d, 36);
+    /* VERIFY_BITS(c, 64); */
+    /* [d u4 0 0 0 0 t9 0 0 0 0 c-u4*R0 t3 t2 t1 t0] = [p14 p13 p12 p11 p10 p9 0 0 0 0 p4 p3 p2 p1 p0] */
+    uint32_t t4 = c & M; c >>= 26; c += u4 * R1;
+    VERIFY_BITS(t4, 26);
+    VERIFY_BITS(c, 39);
+    /* [d u4 0 0 0 0 t9 0 0 0 c-u4*R1 t4-u4*R0 t3 t2 t1 t0] = [p14 p13 p12 p11 p10 p9 0 0 0 0 p4 p3 p2 p1 p0] */
+    /* [d 0 0 0 0 0 t9 0 0 0 c t4 t3 t2 t1 t0] = [p14 p13 p12 p11 p10 p9 0 0 0 0 p4 p3 p2 p1 p0] */
+
+    c += (uint64_t)(a[0]*2) * a[5]
+       + (uint64_t)(a[1]*2) * a[4]
+       + (uint64_t)(a[2]*2) * a[3];
+    VERIFY_BITS(c, 63);
+    /* [d 0 0 0 0 0 t9 0 0 0 c t4 t3 t2 t1 t0] = [p14 p13 p12 p11 p10 p9 0 0 0 p5 p4 p3 p2 p1 p0] */
+    d += (uint64_t)(a[6]*2) * a[9]
+       + (uint64_t)(a[7]*2) * a[8];
+    VERIFY_BITS(d, 62);
+    /* [d 0 0 0 0 0 t9 0 0 0 c t4 t3 t2 t1 t0] = [p15 p14 p13 p12 p11 p10 p9 0 0 0 p5 p4 p3 p2 p1 p0] */
+    uint64_t u5 = d & M; d >>= 26; c += u5 * R0;
+    VERIFY_BITS(u5, 26);
+    VERIFY_BITS(d, 36);
+    /* VERIFY_BITS(c, 64); */
+    /* [d u5 0 0 0 0 0 t9 0 0 0 c-u5*R0 t4 t3 t2 t1 t0] = [p15 p14 p13 p12 p11 p10 p9 0 0 0 p5 p4 p3 p2 p1 p0] */
+    uint32_t t5 = c & M; c >>= 26; c += u5 * R1;
+    VERIFY_BITS(t5, 26);
+    VERIFY_BITS(c, 39);
+    /* [d u5 0 0 0 0 0 t9 0 0 c-u5*R1 t5-u5*R0 t4 t3 t2 t1 t0] = [p15 p14 p13 p12 p11 p10 p9 0 0 0 p5 p4 p3 p2 p1 p0] */
+    /* [d 0 0 0 0 0 0 t9 0 0 c t5 t4 t3 t2 t1 t0] = [p15 p14 p13 p12 p11 p10 p9 0 0 0 p5 p4 p3 p2 p1 p0] */
+
+    c += (uint64_t)(a[0]*2) * a[6]
+       + (uint64_t)(a[1]*2) * a[5]
+       + (uint64_t)(a[2]*2) * a[4]
+       + (uint64_t)a[3] * a[3];
+    VERIFY_BITS(c, 63);
+    /* [d 0 0 0 0 0 0 t9 0 0 c t5 t4 t3 t2 t1 t0] = [p15 p14 p13 p12 p11 p10 p9 0 0 p6 p5 p4 p3 p2 p1 p0] */
+    d += (uint64_t)(a[7]*2) * a[9]
+       + (uint64_t)a[8] * a[8];
+    VERIFY_BITS(d, 61);
+    /* [d 0 0 0 0 0 0 t9 0 0 c t5 t4 t3 t2 t1 t0] = [p16 p15 p14 p13 p12 p11 p10 p9 0 0 p6 p5 p4 p3 p2 p1 p0] */
+    uint64_t u6 = d & M; d >>= 26; c += u6 * R0;
+    VERIFY_BITS(u6, 26);
+    VERIFY_BITS(d, 35);
+    /* VERIFY_BITS(c, 64); */
+    /* [d u6 0 0 0 0 0 0 t9 0 0 c-u6*R0 t5 t4 t3 t2 t1 t0] = [p16 p15 p14 p13 p12 p11 p10 p9 0 0 p6 p5 p4 p3 p2 p1 p0] */
+    uint32_t t6 = c & M; c >>= 26; c += u6 * R1;
+    VERIFY_BITS(t6, 26);
+    VERIFY_BITS(c, 39);
+    /* [d u6 0 0 0 0 0 0 t9 0 c-u6*R1 t6-u6*R0 t5 t4 t3 t2 t1 t0] = [p16 p15 p14 p13 p12 p11 p10 p9 0 0 p6 p5 p4 p3 p2 p1 p0] */
+    /* [d 0 0 0 0 0 0 0 t9 0 c t6 t5 t4 t3 t2 t1 t0] = [p16 p15 p14 p13 p12 p11 p10 p9 0 0 p6 p5 p4 p3 p2 p1 p0] */
+
+    c += (uint64_t)(a[0]*2) * a[7]
+       + (uint64_t)(a[1]*2) * a[6]
+       + (uint64_t)(a[2]*2) * a[5]
+       + (uint64_t)(a[3]*2) * a[4];
+    /* VERIFY_BITS(c, 64); */
+    VERIFY_CHECK(c <= 0x8000007C00000007ULL);
+    /* [d 0 0 0 0 0 0 0 t9 0 c t6 t5 t4 t3 t2 t1 t0] = [p16 p15 p14 p13 p12 p11 p10 p9 0 p7 p6 p5 p4 p3 p2 p1 p0] */
+    d += (uint64_t)(a[8]*2) * a[9];
+    VERIFY_BITS(d, 58);
+    /* [d 0 0 0 0 0 0 0 t9 0 c t6 t5 t4 t3 t2 t1 t0] = [p17 p16 p15 p14 p13 p12 p11 p10 p9 0 p7 p6 p5 p4 p3 p2 p1 p0] */
+    uint64_t u7 = d & M; d >>= 26; c += u7 * R0;
+    VERIFY_BITS(u7, 26);
+    VERIFY_BITS(d, 32);
+    /* VERIFY_BITS(c, 64); */
+    VERIFY_CHECK(c <= 0x800001703FFFC2F7ULL);
+    /* [d u7 0 0 0 0 0 0 0 t9 0 c-u7*R0 t6 t5 t4 t3 t2 t1 t0] = [p17 p16 p15 p14 p13 p12 p11 p10 p9 0 p7 p6 p5 p4 p3 p2 p1 p0] */
+    uint32_t t7 = c & M; c >>= 26; c += u7 * R1;
+    VERIFY_BITS(t7, 26);
+    VERIFY_BITS(c, 38);
+    /* [d u7 0 0 0 0 0 0 0 t9 c-u7*R1 t7-u7*R0 t6 t5 t4 t3 t2 t1 t0] = [p17 p16 p15 p14 p13 p12 p11 p10 p9 0 p7 p6 p5 p4 p3 p2 p1 p0] */
+    /* [d 0 0 0 0 0 0 0 0 t9 c t7 t6 t5 t4 t3 t2 t1 t0] = [p17 p16 p15 p14 p13 p12 p11 p10 p9 0 p7 p6 p5 p4 p3 p2 p1 p0] */
+
+    c += (uint64_t)(a[0]*2) * a[8]
+       + (uint64_t)(a[1]*2) * a[7]
+       + (uint64_t)(a[2]*2) * a[6]
+       + (uint64_t)(a[3]*2) * a[5]
+       + (uint64_t)a[4] * a[4];
+    /* VERIFY_BITS(c, 64); */
+    VERIFY_CHECK(c <= 0x9000007B80000008ULL);
+    /* [d 0 0 0 0 0 0 0 0 t9 c t7 t6 t5 t4 t3 t2 t1 t0] = [p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+    d += (uint64_t)a[9] * a[9];
+    VERIFY_BITS(d, 57);
+    /* [d 0 0 0 0 0 0 0 0 t9 c t7 t6 t5 t4 t3 t2 t1 t0] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+    uint64_t u8 = d & M; d >>= 26; c += u8 * R0;
+    VERIFY_BITS(u8, 26);
+    VERIFY_BITS(d, 31);
+    /* VERIFY_BITS(c, 64); */
+    VERIFY_CHECK(c <= 0x9000016FBFFFC2F8ULL);
+    /* [d u8 0 0 0 0 0 0 0 0 t9 c-u8*R0 t7 t6 t5 t4 t3 t2 t1 t0] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+
+    r[3] = t3;
+    VERIFY_BITS(r[3], 26);
+    /* [d u8 0 0 0 0 0 0 0 0 t9 c-u8*R0 t7 t6 t5 t4 r3 t2 t1 t0] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+    r[4] = t4;
+    VERIFY_BITS(r[4], 26);
+    /* [d u8 0 0 0 0 0 0 0 0 t9 c-u8*R0 t7 t6 t5 r4 r3 t2 t1 t0] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+    r[5] = t5;
+    VERIFY_BITS(r[5], 26);
+    /* [d u8 0 0 0 0 0 0 0 0 t9 c-u8*R0 t7 t6 r5 r4 r3 t2 t1 t0] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+    r[6] = t6;
+    VERIFY_BITS(r[6], 26);
+    /* [d u8 0 0 0 0 0 0 0 0 t9 c-u8*R0 t7 r6 r5 r4 r3 t2 t1 t0] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+    r[7] = t7;
+    VERIFY_BITS(r[7], 26);
+    /* [d u8 0 0 0 0 0 0 0 0 t9 c-u8*R0 r7 r6 r5 r4 r3 t2 t1 t0] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+
+    r[8] = c & M; c >>= 26; c += u8 * R1;
+    VERIFY_BITS(r[8], 26);
+    VERIFY_BITS(c, 39);
+    /* [d u8 0 0 0 0 0 0 0 0 t9+c-u8*R1 r8-u8*R0 r7 r6 r5 r4 r3 t2 t1 t0] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+    /* [d 0 0 0 0 0 0 0 0 0 t9+c r8 r7 r6 r5 r4 r3 t2 t1 t0] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+    c   += d * R0 + t9;
+    VERIFY_BITS(c, 45);
+    /* [d 0 0 0 0 0 0 0 0 0 c-d*R0 r8 r7 r6 r5 r4 r3 t2 t1 t0] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+    r[9] = c & (M >> 4); c >>= 22; c += d * (R1 << 4);
+    VERIFY_BITS(r[9], 22);
+    VERIFY_BITS(c, 46);
+    /* [d 0 0 0 0 0 0 0 0 r9+((c-d*R1<<4)<<22)-d*R0 r8 r7 r6 r5 r4 r3 t2 t1 t0] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+    /* [d 0 0 0 0 0 0 0 -d*R1 r9+(c<<22)-d*R0 r8 r7 r6 r5 r4 r3 t2 t1 t0] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+    /* [r9+(c<<22) r8 r7 r6 r5 r4 r3 t2 t1 t0] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+
+    d    = c * (R0 >> 4) + t0;
+    VERIFY_BITS(d, 56);
+    /* [r9+(c<<22) r8 r7 r6 r5 r4 r3 t2 t1 d-c*R0>>4] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+    r[0] = d & M; d >>= 26;
+    VERIFY_BITS(r[0], 26);
+    VERIFY_BITS(d, 30);
+    /* [r9+(c<<22) r8 r7 r6 r5 r4 r3 t2 t1+d r0-c*R0>>4] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+    d   += c * (R1 >> 4) + t1;
+    VERIFY_BITS(d, 53);
+    VERIFY_CHECK(d <= 0x10000003FFFFBFULL);
+    /* [r9+(c<<22) r8 r7 r6 r5 r4 r3 t2 d-c*R1>>4 r0-c*R0>>4] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+    /* [r9 r8 r7 r6 r5 r4 r3 t2 d r0] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+    r[1] = d & M; d >>= 26;
+    VERIFY_BITS(r[1], 26);
+    VERIFY_BITS(d, 27);
+    VERIFY_CHECK(d <= 0x4000000ULL);
+    /* [r9 r8 r7 r6 r5 r4 r3 t2+d r1 r0] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+    d   += t2;
+    VERIFY_BITS(d, 27);
+    /* [r9 r8 r7 r6 r5 r4 r3 d r1 r0] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+    r[2] = d;
+    VERIFY_BITS(r[2], 27);
+    /* [r9 r8 r7 r6 r5 r4 r3 r2 r1 r0] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
+}
+
+
+static void secp256k1_fe_mul(secp256k1_fe_t *r, const secp256k1_fe_t *a, const secp256k1_fe_t *b) {
+#ifdef VERIFY
+    VERIFY_CHECK(a->magnitude <= 8);
+    VERIFY_CHECK(b->magnitude <= 8);
+    secp256k1_fe_verify(a);
+    secp256k1_fe_verify(b);
 #endif
     secp256k1_fe_mul_inner(a->n, b->n, r->n);
-}
-
-void static secp256k1_fe_sqr(secp256k1_fe_t *r, const secp256k1_fe_t *a) {
 #ifdef VERIFY
-    assert(a->magnitude <= 8);
     r->magnitude = 1;
     r->normalized = 0;
+    secp256k1_fe_verify(r);
+#endif
+}
+
+static void secp256k1_fe_sqr(secp256k1_fe_t *r, const secp256k1_fe_t *a) {
+#ifdef VERIFY
+    VERIFY_CHECK(a->magnitude <= 8);
+    secp256k1_fe_verify(a);
 #endif
     secp256k1_fe_sqr_inner(a->n, r->n);
+#ifdef VERIFY
+    r->magnitude = 1;
+    r->normalized = 0;
+    secp256k1_fe_verify(r);
+#endif
 }
 
 #endif
