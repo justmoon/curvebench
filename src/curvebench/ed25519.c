@@ -30,7 +30,7 @@ static void ed25519_fixture_tear_down(void *arg)
     free(fix);
 }
 
-BENCHMARK_F(ed25519_fixture, verify, 10, 100)
+BENCHMARK_F(ed25519_fixture, verify, 10, 10000)
 {
     ed25519_fixture *fix = (ed25519_fixture*)arg;
 
