@@ -1,7 +1,8 @@
-bench
-bench.exe
+bench_inv
+bench_sign
+bench_verify
 tests
-tests.exe
+*.exe
 *.so
 *.a
 !.gitignore
@@ -11,7 +12,6 @@ configure
 .libs/
 Makefile.in
 aclocal.m4
-autogen.sh
 autom4te.cache/
 config.log
 config.status
@@ -20,7 +20,7 @@ config.status
 libtool
 .deps/
 .dirstamp
-src/build-aux/
+build-aux/
 *.lo
 *.o
 *~
