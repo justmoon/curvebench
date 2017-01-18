@@ -8,38 +8,38 @@
  <body>
 <pre style='font-family:monospace'>
 <span style='color:#008000'>[==========]</span> Running 2 benchmarks.
-<span style='color:#008000'>[ RUN      ]</span><span style='color:#808000'> secp256k1_fixture.verify</span> (10 runs, 100 iterations per run)
-<span style='color:#008000'>[     DONE ]</span><span style='color:#808000'> secp256k1_fixture.verify</span> (151.294000 ms)
-<span style='color:#000080'>[   RUNS   ] </span>       Average time: 15129.400 us
-                         Fastest: 14820.000 us (<span style='color:#008000'>-309.400 us / -2.045 %</span>)
-                         Slowest: 16307.000 us (<span style='color:#800000'>+1177.600 us / +7.784 %</span>)
+<span style='color:#008000'>[ RUN      ]</span><span style='color:#808000'> secp256k1_fixture.verify</span> (10 runs, 10000 iterations per run)
+<span style='color:#008000'>[     DONE ]</span><span style='color:#808000'> secp256k1_fixture.verify</span> (9651.133000 ms)
+<span style='color:#000080'>[   RUNS   ] </span>       Average time: 965113.300 us
+                         Fastest: 963725.000 us (<span style='color:#008000'>-1388.300 us / -0.144 %</span>)
+                         Slowest: 967235.000 us (<span style='color:#800000'>+2121.700 us / +0.220 %</span>)
 
-             Average performance: 66.09647 runs/s
-                Best performance: 67.47638 runs/s (<span style='color:#008000'>+1.380 runs/s / +2.088 %</span>)
-               Worst performance: 61.32336 runs/s (<span style='color:#800000'>-4.773 runs/s / -7.221 %</span>)
-<span style='color:#000080'>[ITERATIONS] </span>       Average time: 151.294 us
-                         Fastest: 148.200 us (<span style='color:#008000'>-3.094 us / -2.045 %</span>)
-                         Slowest: 163.070 us (<span style='color:#800000'>+11.776 us / +7.784 %</span>)
+             Average performance: 1.03615 runs/s
+                Best performance: 1.03764 runs/s (<span style='color:#008000'>+0.001 runs/s / +0.144 %</span>)
+               Worst performance: 1.03387 runs/s (<span style='color:#800000'>-0.002 runs/s / -0.219 %</span>)
+<span style='color:#000080'>[ITERATIONS] </span>       Average time: 96.511 us
+                         Fastest: 96.373 us (<span style='color:#008000'>-0.139 us / -0.144 %</span>)
+                         Slowest: 96.724 us (<span style='color:#800000'>+0.212 us / +0.220 %</span>)
 
-             Average performance: 6609.64744 iterations/s
-                Best performance: 6747.63833 iterations/s (<span style='color:#008000'>+137.991 iterations/s / +2.088 %</span>)
-               Worst performance: 6132.33581 iterations/s (<span style='color:#800000'>-477.312 iterations/s / -7.221 %</span>)
-<span style='color:#008000'>[ RUN      ]</span><span style='color:#808000'> ed25519_fixture.verify</span> (10 runs, 100 iterations per run)
-<span style='color:#008000'>[     DONE ]</span><span style='color:#808000'> ed25519_fixture.verify</span> (79.956000 ms)
-<span style='color:#000080'>[   RUNS   ] </span>       Average time: 7995.600 us
-                         Fastest: 7960.000 us (<span style='color:#008000'>-35.600 us / -0.445 %</span>)
-                         Slowest: 8048.000 us (<span style='color:#800000'>+52.400 us / +0.655 %</span>)
+             Average performance: 10361.47777 iterations/s
+                Best performance: 10376.40406 iterations/s (<span style='color:#008000'>+14.926 iterations/s / +0.144 %</span>)
+               Worst performance: 10338.74911 iterations/s (<span style='color:#800000'>-22.729 iterations/s / -0.219 %</span>)
+<span style='color:#008000'>[ RUN      ]</span><span style='color:#808000'> ed25519_fixture.verify</span> (10 runs, 10000 iterations per run)
+<span style='color:#008000'>[     DONE ]</span><span style='color:#808000'> ed25519_fixture.verify</span> (8884.871000 ms)
+<span style='color:#000080'>[   RUNS   ] </span>       Average time: 888487.100 us
+                         Fastest: 887709.000 us (<span style='color:#008000'>-778.100 us / -0.088 %</span>)
+                         Slowest: 891600.000 us (<span style='color:#800000'>+3112.900 us / +0.350 %</span>)
 
-             Average performance: 125.06879 runs/s
-                Best performance: 125.62814 runs/s (<span style='color:#008000'>+0.559 runs/s / +0.447 %</span>)
-               Worst performance: 124.25447 runs/s (<span style='color:#800000'>-0.814 runs/s / -0.651 %</span>)
-<span style='color:#000080'>[ITERATIONS] </span>       Average time: 79.956 us
-                         Fastest: 79.600 us (<span style='color:#008000'>-0.356 us / -0.445 %</span>)
-                         Slowest: 80.480 us (<span style='color:#800000'>+0.524 us / +0.655 %</span>)
+             Average performance: 1.12551 runs/s
+                Best performance: 1.12650 runs/s (<span style='color:#008000'>+0.001 runs/s / +0.088 %</span>)
+               Worst performance: 1.12158 runs/s (<span style='color:#800000'>-0.004 runs/s / -0.349 %</span>)
+<span style='color:#000080'>[ITERATIONS] </span>       Average time: 88.849 us
+                         Fastest: 88.771 us (<span style='color:#008000'>-0.078 us / -0.088 %</span>)
+                         Slowest: 89.160 us (<span style='color:#800000'>+0.311 us / +0.350 %</span>)
 
-             Average performance: 12506.87878 iterations/s
-                Best performance: 12562.81407 iterations/s (<span style='color:#008000'>+55.935 iterations/s / +0.447 %</span>)
-               Worst performance: 12425.44732 iterations/s (<span style='color:#800000'>-81.431 iterations/s / -0.651 %</span>)
+             Average performance: 11255.08744 iterations/s
+                Best performance: 11264.95282 iterations/s (<span style='color:#008000'>+9.865 iterations/s / +0.088 %</span>)
+               Worst performance: 11215.79183 iterations/s (<span style='color:#800000'>-39.296 iterations/s / -0.349 %</span>)
 <span style='color:#008000'>[==========]</span> Ran 2 benchmarks.
 
   </pre>
