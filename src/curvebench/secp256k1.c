@@ -38,7 +38,7 @@ static void secp256k1_fixture_tear_down(void *arg)
     free(fix);
 }
 
-BENCHMARK_F(secp256k1_fixture, verify, 10, 100)
+BENCHMARK_F(secp256k1_fixture, verify, 10, 10000)
 {
     secp256k1_fixture *fix = (secp256k1_fixture*)arg;
 
